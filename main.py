@@ -4,9 +4,10 @@ from panda3d.core import loadPrcFile
 from direct.actor.Actor import Actor
 from panda3d.core import AmbientLight
 from panda3d.core import Vec4, Vec3
+from direct.showbase.ShowBase import ShowBase
+#from mapmanager import Mapmanager
 
 loadPrcFile ( 'conf.prc' )
-from direct.showbase.ShowBase import ShowBase
 
 
 class MyGame ( ShowBase ) :
@@ -15,6 +16,48 @@ class MyGame ( ShowBase ) :
         self.updateTask = taskMgr.add(self.update, "update")
         print(controlName, "set to", controlState)
 
+
+
+class Mapmanager():
+    def __init__(self):
+        self.model = 'block'
+        self.texture = 'block.png'
+        self.colors = [
+            ( 0.2,0.2,0.35,1 ),
+            ( 0.2, 0.5, 0.2, 1 ),
+            ( 0.7, 0.2, 0.2, 1 ),
+            ( 0.5, 0.3, 0.0, 1 )
+        ]
+        self.startNew()
+    def startNew(self):
+        self.land = render.attacNewNode('Land')
+    def getColor(self, z):
+        if z < len(self.colors):
+                return self.colors[z]
+        else:
+            return self.colors[len(self.colors)-1]
+    def addBlock(self,position):
+        self.block = loader.loadModel(self.model)
+        self.block.setTexture(loader.loadTexture(self.texture))
+        self.block.setPos(position)
+        self.color = self.getColor(int(position[2]))
+        self.block.setColor(self.color)
+        self.block.reparentTo(self.land)
+    def clear(self):
+        self.land.removeNode()
+        self.startNew()
+
+    def loadLand(self, filename) :
+        with open ( 'OLEG.txt' ) as file :
+            y=0
+            for line in file:
+                x=0
+                line=line.split ( '' )
+                for z in line :
+                    for z0 in range ( int ( z ) + 1 ):
+                        block=self.adBlock ( (x, y, z0) )
+                    x+=1
+                    y+=1
     def update(self, task):
         dt = globalClock.getDt()
         if self.keyMap["up"]:
@@ -31,6 +74,10 @@ class MyGame ( ShowBase ) :
         return task.cont
 
     def __init__(self) :
+        ShowBase.__init__(self)
+        self.land = Mapmanager()
+        self.land.loadLand('OLEG.txt')
+        base.camLens.detFov(90)
         super ( ).__init__ ()
         self.accept("w", self.updateKeyMap, ["up", True])
         self.accept("w-up", self.updateKeyMap, ["up", False])
