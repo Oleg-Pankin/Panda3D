@@ -7,6 +7,7 @@ from direct.showbase.ShowBase import ShowBase
 from panda3d.core import CollisionTraverser
 from panda3d.core import CollisionHandlerPusher
 from panda3d.core import CollisionTraverser, CollisionHandlerPusher, CollisionSphere, CollisionTube, CollisionNode
+from GameObject import *
 
 
 loadPrcFile ( 'conf.prc' )
@@ -18,69 +19,18 @@ class MyGame ( ShowBase ) :
         self.updateTask = taskMgr.add(self.update, "update")
         print(controlName, "set to", controlState)
 
-
-
-# class Mapmanager():
-#     def __init__(self):
-#         self.model = 'block'
-#         self.texture = 'block.png'
-#         self.colors = [
-#             ( 0.2,0.2,0.35,1 ),
-#             ( 0.2, 0.5, 0.2, 1 ),
-#             ( 0.7, 0.2, 0.2, 1 ),
-#             ( 0.5, 0.3, 0.0, 1 )
-#         ]
-#         self.startNew()
-#     def startNew(self):
-#         self.land = render.attacNewNode('Land')
-#     def getColor(self, z):
-#         if z < len(self.colors):
-#                 return self.colors[z]
-#         else:
-#             return self.colors[len(self.colors)-1]
-#     def addBlock(self,position):
-#         self.block = loader.loadModel(self.model)
-#         self.block.setTexture(loader.loadTexture(self.texture))
-#         self.block.setPos(position)
-#         self.color = self.getColor(int(position[2]))
-#         self.block.setColor(self.color)
-#         self.block.reparentTo(self.land)
-#     def clear(self):
-#         self.land.removeNode()
-#         self.startNew()
-#
-#     def loadLand(self, filename) :
-#         with open ( 'OLEG.txt' ) as file :
-#             y=0
-#             for line in file:
-#                 x=0
-#                 line=line.split ( '' )
-#                 for z in line :
-#                     for z0 in range ( int ( z ) + 1 ):
-#                         block=self.adBlock ( (x, y, z0) )
-#                     x+=1
-#                     y+=1
     def update(self, task):
         dt = globalClock.getDt()
-        if self.keyMap["up"]:
-            self.tempActor.setPos(self.tempActor.getPos() + Vec3( 0 * dt, 0.001, 0))
-        if self.keyMap["down"]:
-            self.tempActor.setPos(self.tempActor.getPos() + Vec3( 0 * dt, -0.001, 0))
-        if self.keyMap["left"]:
-            self.tempActor.setPos(self.tempActor.getPos() + Vec3(-1.0 * dt, 0, 0))
-        if self.keyMap["right"]:
-            self.tempActor.setPos(self.tempActor.getPos() + Vec3(1.0 * dt, 0, 0))
-        if self.keyMap["shoot"]:
-            print("Zap!")
+
+        self.player.update(self.keyMap, dt)
+
+        self.tempEnemy.update(self.player, dt)
+
 
         return task.cont
 
     def __init__(self) :
         ShowBase.__init__(self)
-        # self.land = Mapmanager()
-        # self.land.loadLand('OLEG.txt')
-        # base.camLens.detFov(90)
-        # super ( ).__init__ ()
         self.accept("w", self.updateKeyMap, ["up", True])
         self.accept("w-up", self.updateKeyMap, ["up", False])
         self.accept("s", self.updateKeyMap, ["down", True])
@@ -89,14 +39,10 @@ class MyGame ( ShowBase ) :
         self.accept("a-up", self.updateKeyMap, ["left", False])
         self.accept("d", self.updateKeyMap, ["right", True])
         self.accept("d-up", self.updateKeyMap, ["right", False])
-        self.tempActor=Actor ( "panda", {"walk" : "panda-walk"} )
-        self.tempActor.setPos ( 0, 190, 0 )
-        self.tempActor.setScale ( 0.1, 0.1, 0 )
-        self.tempActor.getChild ( 0 ).setH ( 180 )
+        self.tempActor = Player
         self.environment=loader.loadModel ( "Environment/environment" )
         self.environment.reparentTo ( render )
         self.environment.setPos ( 0, 190, 0 )
-        #self.tempActor.setP ( 90 )
         self.pusher = CollisionHandlerPusher()
         self.cTrav = CollisionTraverser()
 
@@ -104,10 +50,13 @@ class MyGame ( ShowBase ) :
 
         colliderNode = CollisionNode("player")
         colliderNode.addSolid(CollisionSphere(0, 0, 0, 0.3))
-        collider = self.tempActor.attachNewNode(colliderNode)
 
-        base.pusher.addCollider(collider, self.tempActor)
-        base.cTrav.addCollider(collider, self.pusher)
+
+        self.pusher.add_in_pattern("%fn-into-%in")
+        self.accept("trapEnemy-into-wall", self.stopTrap)
+        self.accept("trapEnemy-into-trapEnemy", self.stopTrap)
+        self.accept("trapEnemy-into-player", self.trapHitsSomething)
+        self.accept("trapEnemy-into-walkingEnemy", self.trapHitsSomething)
 
         wallSolid=CollisionTube ( 0, 930, 0, 930, 930, 0, 8.2 )
         wallNode=CollisionNode ( "wall" )
@@ -132,8 +81,7 @@ class MyGame ( ShowBase ) :
         wallNode.addSolid ( wallSolid )
         wall=render.attachNewNode ( wallNode )
         wall.setX ( -8.0 )
-        self.updateTask = taskMgr.add(self.update, "update")
-        self.tempActor.loop ( "walk" )
+
 
         self.cam.setPos ( 0, 185, 30 )
         self.cam.setP ( -80 )
@@ -146,7 +94,59 @@ class MyGame ( ShowBase ) :
             "shoot" : False
         }
 
-        self.tempActor.reparentTo ( render )
+        def stopTrap(self, entry):
+            collider = entry.getFromNodePath()
+            if collider.hasPythonTag("owner"):
+                trap = collider.getPythonTag("owner")
+                trap.moveDirection = 0
+                trap.ignorePlayer = False
+
+        dt = globalClock.getDt()
+        self.player = Player()
+        class TrapEnemy(Enemy):
+            def __init__(self, pos):
+                Enemy.__init__(self, pos,
+                               "trap",
+                               {
+                                   "stand": "trap-stand",
+                                   "walk": "trap-walk",
+                               },
+                               100.0,
+                               10.0,
+                               "trapEnemy")
+
+        self.tempTrap = TrapEnemy(Vec3(-2, 7, 0))
+        self.tempTrap.update(self.player, dt)
+
+        def stopTrap(self, entry):
+            collider = entry.getFromNodePath()
+            if collider.hasPythonTag("owner"):
+                trap = collider.getPythonTag("owner")
+                trap.moveDirection = 0
+                trap.ignorePlayer = False
+
+        def trapHitsSomething(self, entry):
+            collider = entry.getFromNodePath()
+            if collider.hasPythonTag("owner"):
+                trap = collider.getPythonTag("owner")
+
+                # We don't want stationary traps to do damage,             # so ignore the collision if the "moveDirection" is 0             if trap.moveDirection == 0:
+                return
+
+            collider = entry.getIntoNodePath()
+            if collider.hasPythonTag("owner"):
+                obj = collider.getPythonTag("owner")
+                if isinstance(obj, Player):
+                    if not trap.ignorePlayer:
+                        obj.alterHealth(-1)
+                        trap.ignorePlayer = True
+                else:
+                    obj.alterHealth(-10)
+
+        self.player = Player()
+
+        self.tempEnemy = WalkingEnemy(Vec3(0, 185, 0))
+
 
 
 game=MyGame ( )
